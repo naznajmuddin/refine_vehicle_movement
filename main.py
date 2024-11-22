@@ -3,6 +3,8 @@ import os
 from ultralytics import YOLO
 import supervision as sv
 import numpy as np
+import platform
+import subprocess
 
 # Set up home directory
 PROJECT_PATH = os.getcwd()
@@ -142,3 +144,13 @@ def process_whole_video():
 if __name__ == "__main__":
     annotate_single_frame()
     process_whole_video()
+
+    TARGET_VIDEO_PATH = os.path.join(PROJECT_PATH, "result.mp4")
+
+    # Open the video with the default video player
+    if platform.system() == "Windows":
+        os.startfile(TARGET_VIDEO_PATH)
+    elif platform.system() == "Darwin":  # macOS
+        subprocess.call(["open", TARGET_VIDEO_PATH])
+    else:  # Linux and others
+        subprocess.call(["xdg-open", TARGET_VIDEO_PATH])
