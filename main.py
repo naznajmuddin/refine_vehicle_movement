@@ -5,6 +5,7 @@ import supervision as sv
 import numpy as np
 import platform
 import subprocess
+import cv2
 
 # Set up home directory
 PROJECT_PATH = os.getcwd()
@@ -22,17 +23,25 @@ SELECTED_CLASS_IDS = [
 
 # Mapping for custom class labels
 CUSTOM_LABELS = {
+    2: "mobil",  # Class 2 corresponds to "mobil"
+    3: "motor",  # Class 3 corresponds to "motor"
+    5: "bus",  # Class 5 corresponds to "bus"
+    7: "truck",  # Class 7 corresponds to "truck"
+}
+
+CUSTOM_ANNOTATE_LABELS = {
     "car": "mobil",
     "motorcycle": "motor",
     "bus": "bus",
     "truck": "truck",
 }
 
+
 # Download the example video
 from supervision.assets import download_assets, VideoAssets
 
 # SOURCE_VIDEO_PATH = download_assets(VideoAssets.VEHICLES)
-SOURCE_VIDEO_PATH = os.path.join(PROJECT_PATH, "test7.mp4")
+SOURCE_VIDEO_PATH = os.path.join(PROJECT_PATH, "test6.mp4")
 
 
 # Single frame prediction and annotation
@@ -55,7 +64,7 @@ def annotate_single_frame():
 
     # Format custom labels
     labels = [
-        f"{CUSTOM_LABELS.get(CLASS_NAMES_DICT[class_id], CLASS_NAMES_DICT[class_id])} {confidence:0.5f}"
+        f"{CUSTOM_ANNOTATE_LABELS.get(CLASS_NAMES_DICT[class_id], CLASS_NAMES_DICT[class_id])} {confidence:0.5f}"
         for confidence, class_id in zip(detections.confidence, detections.class_id)
     ]
 
@@ -74,14 +83,16 @@ def annotate_single_frame():
 
 # Full video processing and annotation
 def process_whole_video():
+
+    print("Processing the video...")
     # Get video resolution
     video_info = sv.VideoInfo.from_video_path(SOURCE_VIDEO_PATH)
     video_width = video_info.width
     video_height = video_info.height
 
     # LINE
-    LINE_START = sv.Point(0, int(0.60 * video_height))
-    LINE_END = sv.Point(video_width, int(0.60 * video_height))
+    LINE_START = sv.Point(0, int(0.65 * video_height))
+    LINE_END = sv.Point(video_width, int(0.65 * video_height))
 
     TARGET_VIDEO_PATH = os.path.join(PROJECT_PATH, "result.mp4")
 
@@ -107,20 +118,51 @@ def process_whole_video():
         thickness=4, text_thickness=4, text_scale=2
     )
 
-    # Callback function for video processing
+    # Counter for each vehicle type
+    vehicle_counts = {
+        vehicle: {"in": 0, "out": 0} for vehicle in CUSTOM_LABELS.values()
+    }
+
+    # Initialize a total count variable for vehicles within the premise
+
+    total_count = 0
+
     def callback(frame: np.ndarray, index: int) -> np.ndarray:
+        nonlocal total_count  # To keep track of the total count across frames
         results = model(frame, verbose=False)[0]
         detections = sv.Detections.from_ultralytics(results)
         detections = detections[np.isin(detections.class_id, SELECTED_CLASS_IDS)]
         detections = byte_tracker.update_with_detections(detections)
 
+        # Trigger the line zone to detect crossings
+        line_zone.trigger(detections)
+
+        # Update vehicle counts and adjust the total count
+        for class_id, in_count in line_zone.in_count_per_class.items():
+            class_label = CUSTOM_LABELS.get(int(class_id), f"Class {class_id}")
+            vehicle_counts[class_label]["in"] = in_count
+
+        for class_id, out_count in line_zone.out_count_per_class.items():
+            class_label = CUSTOM_LABELS.get(int(class_id), f"Class {class_id}")
+            vehicle_counts[class_label]["out"] = out_count
+
+        # Calculate the net total count (vehicles inside the premise)
+        current_total_in = sum(line_zone.in_count_per_class.values())
+        current_total_out = sum(line_zone.out_count_per_class.values())
+        total_count = current_total_in - current_total_out
+
+        # Debug: Print the updated vehicle counts in the terminal
+        print("Jumlah Kendaraan:")
+        print(vehicle_counts)
+        print(f"Total kendaraan di lokasi: {total_count}")
+
+        # Create labels for detections
         labels = [
-            f"#{tracker_id} {CUSTOM_LABELS.get(model.model.names[class_id], model.model.names[class_id])} {confidence:0.2f}"
-            for confidence, class_id, tracker_id in zip(
-                detections.confidence, detections.class_id, detections.tracker_id
-            )
+            f"{CUSTOM_ANNOTATE_LABELS.get(CLASS_NAMES_DICT[class_id], CLASS_NAMES_DICT[class_id])}"
+            for class_id in detections.class_id
         ]
 
+        # Annotate the frame
         annotated_frame = frame.copy()
         annotated_frame = trace_annotator.annotate(
             scene=annotated_frame, detections=detections
@@ -131,9 +173,34 @@ def process_whole_video():
         annotated_frame = label_annotator.annotate(
             scene=annotated_frame, detections=detections, labels=labels
         )
-        line_zone.trigger(detections)
+        annotated_frame = line_zone_annotator.annotate(
+            annotated_frame, line_counter=line_zone
+        )
 
-        return line_zone_annotator.annotate(annotated_frame, line_counter=line_zone)
+        # Display counts on the frame
+        count_text = "\n".join(
+            [
+                f"{vehicle}: Masuk={counts['in']} Keluar={counts['out']}"
+                for vehicle, counts in vehicle_counts.items()
+            ]
+        )
+        total_text = f"Total kendaraan di lokasi: {total_count}"
+
+        # Draw the text on the frame
+        y_start = 50
+        for line in count_text.split("\n") + [total_text]:
+            cv2.putText(
+                annotated_frame,
+                line,
+                (50, y_start),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                1,  # Font scale
+                (255, 255, 255),  # Text color (white)
+                2,  # Thickness
+            )
+            y_start += 30
+
+        return annotated_frame
 
     # Process video
     sv.process_video(
