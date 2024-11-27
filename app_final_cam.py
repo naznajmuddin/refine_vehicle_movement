@@ -39,18 +39,13 @@ frame_lock = threading.Lock()
 
 
 # Helper function to process and annotate frames
-
-
 def process_frame(
     frame, line_zone, byte_tracker, box_annotator, label_annotator, line_zone_annotator
 ):
     global vehicle_counts, total_count
 
-    # Run YOLO model inference
     results = model(frame, verbose=False)[0]
     detections = sv.Detections.from_ultralytics(results)
-
-    # Filter detections for selected class IDs
     detections = detections[np.isin(detections.class_id, SELECTED_CLASS_IDS)]
     detections = byte_tracker.update_with_detections(detections)
 
@@ -71,10 +66,6 @@ def process_frame(
         counts["out"] for counts in vehicle_counts.values()
     )
 
-    # Log the trace information for each class
-    for class_id, counts in vehicle_counts.items():
-        print(f"Class: {class_id} | In: {counts['in']} | Out: {counts['out']}")
-
     # Annotate the frame
     annotated_frame = frame.copy()
     annotated_frame = box_annotator.annotate(
@@ -91,19 +82,6 @@ def process_frame(
     annotated_frame = line_zone_annotator.annotate(
         frame=annotated_frame, line_counter=line_zone
     )
-
-    # Add trace annotations to the frame
-    for i, (vehicle, counts) in enumerate(vehicle_counts.items()):
-        cv2.putText(
-            annotated_frame,
-            f"{vehicle.capitalize()} - In: {counts['in']} | Out: {counts['out']}",
-            (10, 30 + i * 20),  # Position for each line
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.6,  # Font scale
-            (255, 255, 255),  # Text color (white)
-            2,  # Thickness
-            cv2.LINE_AA,
-        )
 
     return annotated_frame
 
@@ -181,14 +159,14 @@ def create_gui():
     root.configure(bg="#f4f4f4")
 
     # Header
-    header_frame = tk.Frame(root, bg="#d0c6c5", height=60)
+    header_frame = tk.Frame(root, bg="#eaeaea", height=60)
     header_frame.pack(fill="x", side="top")
 
     header_label = tk.Label(
         header_frame,
         text="Intelligent Surveillance System di Fakultas Teknik",
         font=("Arial", 24, "bold"),
-        bg="#d0c6c5",
+        bg="#eaeaea",
         fg="#000",
     )
     header_label.pack(pady=10)
@@ -207,6 +185,19 @@ def create_gui():
     # Counter and controls
     counter_frame = tk.Frame(main_frame, bg="#d0c6c5", width=350, height=600)
     counter_frame.grid(row=0, column=1, sticky="nsew", padx=0, pady=0)
+    
+    # IP Display
+    ip_frame = tk.Frame(counter_frame, bg="#d0c6c5", padx=10, pady=10)
+    ip_frame.pack(fill="x", pady=(0, 10))
+
+    ip_label = tk.Label(
+        ip_frame,
+        text="IP Cam: 192.168.233.100",
+        font=("Arial", 14, "bold"),
+        bg="#d0c6c5",
+        fg="#333",
+    )
+    ip_label.pack(anchor="center")
 
     # Vehicle count display
     count_title = tk.Label(
