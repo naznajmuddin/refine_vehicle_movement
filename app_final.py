@@ -68,7 +68,9 @@ def process_gui():
                 label_height = video_label.winfo_height()
 
                 # Resize the frame to fit the video_label dimensions
-                frame = cv2.resize(frame, (label_width, label_height), interpolation=cv2.INTER_AREA)
+                frame = cv2.resize(
+                    frame, (label_width, label_height), interpolation=cv2.INTER_AREA
+                )
 
                 # Convert color and display
                 frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -82,7 +84,6 @@ def process_gui():
             else:
                 cap.release()
                 replay_video()
-
 
         update_frame()
 
@@ -155,13 +156,15 @@ def process_gui():
     counter_frame = tk.Frame(main_frame, bg="#fff", width=350, height=600)
     counter_frame.grid(row=0, column=1, sticky="nsew", padx=0, pady=0)
 
+    video_file_name = os.path.basename(SOURCE_VIDEO_PATH)
+
     # IP Display
     ip_frame = tk.Frame(counter_frame, bg="#d0c6c5", padx=10, pady=10)
     ip_frame.pack(fill="x", pady=(0, 10))
 
     ip_label = tk.Label(
         ip_frame,
-        text="IP Cam: 192.168.233.100",
+        text=f"Video File: {video_file_name}",
         font=("Arial", 14, "bold"),
         bg="#d0c6c5",
         fg="#333",
