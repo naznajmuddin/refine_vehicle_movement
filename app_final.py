@@ -6,9 +6,12 @@ import cv2
 import tkinter as tk
 from PIL import Image, ImageTk
 import threading
+from threading import Timer
 
+# Global variables
 video_ready_event = threading.Event()
 cap = None
+resize_timer = None
 
 PROJECT_PATH = os.getcwd()
 SOURCE_VIDEO_PATH = os.path.join(PROJECT_PATH, "test6.mp4")
@@ -39,51 +42,9 @@ CUSTOM_ANNOTATE_LABELS = {
 vehicle_counts = {vehicle: {"in": 0, "out": 0} for vehicle in CUSTOM_LABELS.values()}
 total_count = 0
 
-
-def create_rounded_rectangle(canvas, x1, y1, x2, y2, radius=25, **kwargs):
-    points = [
-        x1 + radius,
-        y1,
-        x1 + radius,
-        y1,
-        x2 - radius,
-        y1,
-        x2 - radius,
-        y1,
-        x2,
-        y1,
-        x2,
-        y1 + radius,
-        x2,
-        y1 + radius,
-        x2,
-        y2 - radius,
-        x2,
-        y2 - radius,
-        x2,
-        y2,
-        x2 - radius,
-        y2,
-        x2 - radius,
-        y2,
-        x1 + radius,
-        y2,
-        x1 + radius,
-        y2,
-        x1,
-        y2,
-        x1,
-        y2 - radius,
-        x1,
-        y2 - radius,
-        x1,
-        y1 + radius,
-        x1,
-        y1 + radius,
-        x1,
-        y1,
-    ]
-    return canvas.create_polygon(points, smooth=True, **kwargs)
+# Fonts for resizing
+last_header_font_size = [24]
+last_label_font_sizes = [14] * len(vehicle_counts)
 
 
 def process_gui():
@@ -102,25 +63,69 @@ def process_gui():
             global cap
             ret, frame = cap.read()
             if ret:
+                # Get dimensions of video_label
+                label_width = video_label.winfo_width()
+                label_height = video_label.winfo_height()
+
+                # Resize the frame to fit the video_label dimensions
+                frame = cv2.resize(frame, (label_width, label_height), interpolation=cv2.INTER_AREA)
+
+                # Convert color and display
                 frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 img = Image.fromarray(frame)
                 imgtk = ImageTk.PhotoImage(image=img)
                 video_label.imgtk = imgtk
                 video_label.configure(image=imgtk)
+
+                # Schedule the next frame
                 video_label.after(frame_delay, update_frame)
             else:
                 cap.release()
                 replay_video()
+
 
         update_frame()
 
     def replay_video():
         play_video(replay=True)
 
+    def adjust_widget_sizes(event):
+        global last_header_font_size, last_label_font_sizes
+
+        # Adjust header font size
+        new_header_font_size = max(12, event.width // 50)
+        if new_header_font_size != last_header_font_size[0]:
+            last_header_font_size[0] = new_header_font_size
+            header_label.config(font=("Arial", new_header_font_size, "bold"))
+
+        # Adjust count title font size
+        new_count_title_font_size = max(10, event.width // 60)
+        count_title.config(font=("Arial", new_count_title_font_size, "bold"))
+
+        # Adjust IP label font size
+        new_ip_label_font_size = max(12, event.width // 80)
+        ip_label.config(font=("Arial", new_ip_label_font_size, "bold"))
+
+        # Adjust count label font sizes
+        for idx, label in enumerate(count_labels):
+            new_label_font_size = max(10, event.width // 80)
+            if new_label_font_size != last_label_font_sizes[idx]:
+                last_label_font_sizes[idx] = new_label_font_size
+                label.config(font=("Arial", new_label_font_size))
+
+    def adjust_widget_sizes_debounced(event):
+        global resize_timer
+        if resize_timer:
+            resize_timer.cancel()
+        resize_timer = Timer(0.1, lambda: adjust_widget_sizes(event))
+        resize_timer.start()
+
     root = tk.Tk()
     root.title("Intelligent Surveillance System di Fakultas Teknik")
     root.geometry("1200x700")
     root.configure(bg="#f4f4f4")
+
+    root.bind("<Configure>", adjust_widget_sizes_debounced)
 
     # Header
     header_frame = tk.Frame(root, bg="#eaeaea", height=60)
@@ -140,11 +145,11 @@ def process_gui():
     main_frame.pack(fill="both", expand=True)
 
     # Video frame
-    video_frame = tk.Frame(main_frame, bg="#000", width=800, height=600)
+    video_frame = tk.Frame(main_frame, bg="#000", width=900, height=450)
     video_frame.grid(row=0, column=0, rowspan=2, sticky="nsew", padx=(0, 20), pady=0)
 
-    video_label = tk.Label(video_frame, bg="#000")
-    video_label.pack(fill="both", expand=True)
+    video_label = tk.Label(video_frame, bg="#000", width=900, height=450)  # Fixed size
+    video_label.place(relx=0.5, rely=0.5, anchor="center")
 
     # Counter frame
     counter_frame = tk.Frame(main_frame, bg="#fff", width=350, height=600)
@@ -170,7 +175,7 @@ def process_gui():
     count_title = tk.Label(
         count_frame,
         text="Jumlah Kendaraan Masuk",
-        font=("Arial", 16, "bold"),
+        font=("Arial", 10, "bold"),
         bg="#d0c6c5",
         fg="#000",
     )
@@ -198,9 +203,10 @@ def process_gui():
     update_labels()
 
     # Configure column and row weights for resizing
-    main_frame.columnconfigure(0, weight=3)
+    main_frame.columnconfigure(0, weight=0)
     main_frame.columnconfigure(1, weight=1)
     main_frame.rowconfigure(0, weight=1)
+    main_frame.rowconfigure(1, weight=0)
 
     def auto_play_video():
         video_ready_event.wait()
