@@ -14,7 +14,7 @@ cap = None
 resize_timer = None
 
 PROJECT_PATH = os.getcwd()
-SOURCE_VIDEO_PATH = os.path.join(PROJECT_PATH, "test6.mp4")
+SOURCE_VIDEO_PATH = os.path.join(PROJECT_PATH, "test7.mp4")
 TARGET_VIDEO_PATH = os.path.join(PROJECT_PATH, "result.mp4")
 
 model = YOLO("yolov8m.pt")
@@ -39,7 +39,10 @@ CUSTOM_ANNOTATE_LABELS = {
     "truck": "truck",
 }
 
-vehicle_counts = {vehicle: {"in": 0, "out": 0} for vehicle in CUSTOM_LABELS.values()}
+vehicle_counts = {
+    vehicle: {"in": 0, "out": 0, "final": 0} for vehicle in CUSTOM_LABELS.values()
+}
+
 total_count = 0
 
 # Fonts for resizing
@@ -200,7 +203,8 @@ def process_gui():
 
     def update_labels():
         for idx, (vehicle, counts) in enumerate(vehicle_counts.items()):
-            count_labels[idx].config(text=f"{vehicle.capitalize()}: {counts['in']}")
+            # Update GUI labels to show final counts
+            count_labels[idx].config(text=f"{vehicle.capitalize()}: {counts['final']}")
         root.after(1000, update_labels)
 
     update_labels()
@@ -249,13 +253,29 @@ def process_whole_video():
         detections = byte_tracker.update_with_detections(detections)
 
         line_zone.trigger(detections)
-        for class_id, out_count in line_zone.in_count_per_class.items():
-            class_label = CUSTOM_LABELS.get(int(class_id), f"Class {class_id}")
-            vehicle_counts[class_label]["out"] = out_count
 
-        for class_id, in_count in line_zone.out_count_per_class.items():
+        # Process "Keluar" (out) counts
+        for class_id, out_count in line_zone.out_count_per_class.items():
+            class_label = CUSTOM_LABELS.get(int(class_id), f"Class {class_id}")
+            previous_out_count = vehicle_counts[class_label]["out"]
+            new_out_count = out_count
+            vehicle_counts[class_label]["out"] = new_out_count
+
+            # Calculate the difference and adjust "Masuk" (in) count
+            if new_out_count > previous_out_count:
+                keluar_diff = new_out_count - previous_out_count
+                vehicle_counts[class_label]["in"] = max(
+                    0, vehicle_counts[class_label]["in"] - keluar_diff
+                )
+
+        # Process "Masuk" (in) counts
+        for class_id, in_count in line_zone.in_count_per_class.items():
             class_label = CUSTOM_LABELS.get(int(class_id), f"Class {class_id}")
             vehicle_counts[class_label]["in"] = in_count
+
+        # Calculate final count (Masuk - Keluar)
+        for vehicle, counts in vehicle_counts.items():
+            counts["final"] = counts["out"] - counts["in"]
 
         labels = [
             f"{CUSTOM_ANNOTATE_LABELS.get(CLASS_NAMES_DICT[class_id], CLASS_NAMES_DICT[class_id])}"
@@ -272,7 +292,7 @@ def process_whole_video():
         line_annotator.annotate(frame=annotated_frame, line_counter=line_zone)
 
         for idx, (vehicle, counts) in enumerate(vehicle_counts.items()):
-            text = f"{vehicle}: Masuk: {counts['in']} | Keluar: {counts['out']}"
+            text = f"{vehicle}: Masuk: {counts['out']} | Keluar: {counts['in']} | Total: {counts['final']}"
             position = (10, 30 + idx * 20)
             cv2.putText(
                 annotated_frame,
