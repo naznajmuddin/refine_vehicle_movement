@@ -28,7 +28,9 @@ CUSTOM_LABELS = {
     7: "truck",
 }
 
-vehicle_counts = {vehicle: {"in": 0, "out": 0} for vehicle in CUSTOM_LABELS.values()}
+vehicle_counts = {
+    vehicle: {"in": 0, "out": 0, "final": 0} for vehicle in CUSTOM_LABELS.values()
+}
 total_count = 0
 
 # Global Variables
@@ -147,8 +149,11 @@ def create_gui():
             cap.release()
 
     def update_labels():
+        for vehicle, counts in vehicle_counts.items():
+            counts["final"] = counts["in"] - counts["out"]
+
         for idx, (vehicle, counts) in enumerate(vehicle_counts.items()):
-            count_labels[idx].config(text=f"{vehicle.capitalize()}: {counts['in']}")
+            count_labels[idx].config(text=f"{vehicle.capitalize()}: {counts['final']}")
         total_label.config(text=f"Total di Lokasi: {total_count}")
         root.after(1000, update_labels)
 
@@ -185,14 +190,14 @@ def create_gui():
     # Counter and controls
     counter_frame = tk.Frame(main_frame, bg="#d0c6c5", width=350, height=600)
     counter_frame.grid(row=0, column=1, sticky="nsew", padx=0, pady=0)
-    
+
     # IP Display
     ip_frame = tk.Frame(counter_frame, bg="#d0c6c5", padx=10, pady=10)
     ip_frame.pack(fill="x", pady=(0, 10))
 
     ip_label = tk.Label(
         ip_frame,
-        text="IP Cam: 192.168.233.100",
+        text="Kamera : Webcam",
         font=("Arial", 14, "bold"),
         bg="#d0c6c5",
         fg="#333",
